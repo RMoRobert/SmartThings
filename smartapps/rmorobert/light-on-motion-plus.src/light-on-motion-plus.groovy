@@ -313,13 +313,14 @@ def turnOnOrRestoreLights() {
     log.debug "Running turnOnOrRestoreLights()..."
     log.trace "state.mode = ${state.mode}"
     if ((!isRunTimeOK() || !isLuxLevelOK()) && !boolDontObserve)   {
-    	log.debug "Outside specified run time or lux level. Returning."
+    	log.trace "Outside specified run time or lux level. Returning."
 		log.debug "Exiting turnOnOrRestoreLights()."
         return
     } else if (boolDontObserve) {
-    	log.debug "Outside specified run time or lux level, but configured not to observe. However, this does not apply to turning light on."
-		log.debug "Exiting turnOnOrRestoreLights()."
-    	return
+    	log.trace "Outside specified run time or lux level, but configured not to observe. However, this does not apply to turning light on. Continuing..."
+		// This is NOT what we should do--it was in here originally but appears to be wrong, so just leave out:
+        //log.debug "Exiting turnOnOrRestoreLights()."
+    	//return
     }
     if (state.mode != "dim" && isOneRealSwitchOn()) {
     	log.trace "Current mode is not 'dim' and at least on swtich is on. Assume this is desired state."
