@@ -26,38 +26,52 @@ definition(
 )
 
 preferences {
-	section("Turn on when there's movement...") {
-		input "motion1", "capability.motionSensor", title: "Where?"
-	}
-	section("Turn on/off light(s)...") {
-    	// Really want to use the 'dimmers' variable below for these, but can't seem to access their on/off
-        // capabilities (even though the devices support it) unless they are selected as switches, so...
-        // Make user select ideally the same lights for both 'switches' and 'dimmers'
-		input "switches", "capability.switch", multiple: true
-	}    
-	section("And off when there's been no movement for...") {
-		input "minutes1", "number", title: "Minutes?"
-	}
-    section("Dim before turning off...") {
-        // See comment for 'switches' variable. 
-        input "dimmers", "capability.switchLevel", multiple: true, title: "Lights to dim for 1 minute before turning off"
-        paragraph "Select the same lights here as you did above, unless you do not want then to dim before turning off. (Selecting lights not chosen above will have no effect.)"
+	page(name: "pageBasic", title: "When there's activity on sensor", nextPage: "pageAdvanced", uninstall: true) {
+        section("Choose a motion sensor...") {
+            input "motion1", "capability.motionSensor", title: "Which motion sensor?"
+        }
+        section("Turn on/off light(s)...") {
+            // Really want to use the 'dimmers' variable below for these, but can't seem to access their on/off
+            // capabilities (even though the devices support it) unless they are selected as switches, so...
+            // Make user select ideally the same lights for both 'switches' and 'dimmers'
+            input "switches", "capability.switch", multiple: true
+        }    
+        section("And off when there's been no movement for...") {
+            input "minutes1", "number", title: "Minutes?"
+        }
+        section("Dim before turning off...") {
+            // See comment for 'switches' variable. 
+            input "dimmers", "capability.switchLevel", multiple: true, title: "Lights to dim for 1 minute before turning off"
+            paragraph "Select the same lights here as you did above, unless you do not want one or more of them to dim before turning off. (Selecting lights not chosen above will have no effect.)"
+       }     
+       section("Only during certain times...") {
+            //TODO: Would be nice to have sunset/sunrise as options here like stock app
+            input "starting", "time", title: "Starting", required: false
+            input "ending", "time", title: "Ending", required: false
+        } 
+        
+        section("Only when illuminance is less than....") {
+            input "lightSensor", "capability.illuminanceMeasurement", required: false
+            input "lightLevel", "number", title: "Below level", required: false
+            paragraph "Levels may range from 0 to over 100,000, depending on the device. Try 400 lux (300 lux if device points indoors) as an esimate for dawn/dusk levels, or check the readings on your device at an appropriate time."
+        }
     }
-    section("Remember on/off state of individual lights when motion stops and restore when motion starts?"){
-		input "boolRemember", "bool", defaultValue: true, title: "Remember states?"
-        paragraph "By default, this app will remember the on/off state of each light chosen above and restore the lights to those on/off states when motion resumes after inactivity (unless all were off), rather than turning all lights back on."
+    page(name: "pageAdvanced", title: "Advanced options", nextPage: "pageFinal") {
+
+        section("Always turn off lights after motion stops, even if specified time/illuminance conditios are not met?") {
+            input "boolDontObserve", "bool", defaultValue: false, title: "Turn lights off even if outside of time or illumance thresholds"
+        }
+        section("Remember on/off state of individual lights when motion stops and restore when motion starts?"){
+            input "boolRemember", "bool", defaultValue: true, title: "Remember states?"
+            paragraph "By default, this app remembers the on/off state of each light chosen previously and restores the on/off state of each light when motion resumes after inactivity, rather than turning all lights back on (unless all were off, then all are turned back on)."
+        }
     }
-    section("Only during certain times...") {
-    	//TODO: Would be nice to have sunset/sunrise as options here like stock app
-        input "starting", "time", title: "Starting", required: false
-		input "ending", "time", title: "Ending", required: false
-    } 
-    section("Only when illuminance is less than....") {
-    	input "lightSensor", "capability.illuminanceMeasurement", required: false
-    	input "lightLevel", "number", title: "Below level (0 to over 100,000; recommend 400 lux for sunrise/sunset levels or about 300 lux if inside)", required: false
-  	}
-    section("Always observe time/illuminance conditions?") {
-    	input "boolDontObserve", "bool", defaultValue: false, title: "Turn bulbs off after motion stops even if outside of specified time or illumance thresholds"
+    
+    page(name: "pageFinal", title: "Name app and configure modes", install: true, uninstall: true) {
+        section([mobileOnly:true]) {
+            label title: "Assign a name", required: false
+            mode title: "Set for specific mode(s)", required: false
+        }
     }
 }
 
