@@ -96,7 +96,6 @@ def updated() {
 	subscribe(motion1, "motion", motionHandler) 
     state.mode = "unknown"
     log.trace "****** App updated *****"
-    
 }
 
 // Returns true if at least one switch is turned on at the moment
@@ -132,17 +131,16 @@ def isOneSavedSwitchOn() {
     return isOneOn
 }
 
-
 // Returns false if user has specified "run between" times and the current time
 // is outside those times. Otherwise, returns true.
 def isRunTimeOK() {
 	log.debug "Running isRunTimeOK()..."
 	def retVal = true
 	if (starting && ending) {
-		def currTime = now()
-		def startTime = timeToday(starting).time
-		def stopTime = timeToday(ending).time
-		retVal = startTime < stopTime ? currTime >= startTime && currTime <= stopTime : currTime <= stopTime || currTime >= startTime
+		def currTime = new Date()
+		def startTime = timeToday(starting, location.timeZone)
+		def stopTime = timeToday(ending, location.timeZone)
+        retVal = timeOfDayIsBetween(startTime, stopTime, currTime, location.timeZone)
 	}
 	log.debug "Exiting isRunTimeOK(). Return value = ${retVal}"
 	return retVal
@@ -173,7 +171,6 @@ def getDimmerForSwitch(sw) {
 	log.trace "Running getDimmerForSwitch()... sw = ${sw}"
 	for (dm in dimmers) {
     	if (dm.id == sw.id) {
-        	//log.trace "Found dimmer matching switch ${sw}"
             log.debug "Exiting from getDimmerForSwitch(). Found dimmer, returning ${dm}."
         	return dm
 		}
@@ -187,7 +184,6 @@ def getDimmerForSwitch(sw) {
 def getSwitchForDimmer(dm) {
 	for (sw in switches) {
     	if (sw.id == dm.id) {
-			//log.trace "Found switch matching dimmer ${dm}"
             log.trace "Exiting getSwitchForDimmer(). Found switch, returning ${sw}."
         	return sw
 		}
@@ -223,7 +219,7 @@ def saveLightState(forSwitch) {
  */
 def saveLightOnOffState(forSwitch) {
 	log.debug "Running saveLightOnOffState()..."
-    log.trace "Switch ${forSwitch.id} currently saved as ${state.switchStates.(forSwitch.id)}"
+    //log.trace "Switch ${forSwitch.id} currently saved as ${state.switchStates.(forSwitch.id)}"
     state.switchStates.(forSwitch.id).switch = forSwitch.currentSwitch
     log.trace "Just saved for " + forSwitch.id + ": " + state.switchStates.get(forSwitch.id)
     log.debug "Exiting saveLightOnOffState()."    
@@ -262,14 +258,11 @@ def motionHandler(evt) {
 		log.trace "Motion active. Turn on lights (or ensure on). Calling turnOnOrRestoreLights()..."
 		turnOnOrRestoreLights()
 	} else if (evt.value == "inactive") {
-    	// Old code to just run scheduleCheck after 'off' threshold:
-		//runIn(minutes1 * 60, scheduleCheck, [overwrite: false])  // why not overwrite?
     	log.trace "Motion inactive. Deciding what to do..."
         if (dimmers) {
         	log.trace "Dimming option has been chosen. Scheduling scheduleCheck() to run after 'dimming' threshold reached."
             // Run 1 minute before "off" threshold, unless offThreshold > 1 minute, then aim for 30s
-            runIn(minutes1 > 1 ? (minutes1 - 1) * 60 : 30, scheduleCheck)            
-            //runIn(minutes1 > 1 ? (minutes1 - 1) * 60 : 45, scheduleCheck)
+            runIn(minutes1 > 1 ? (minutes1 - 1) * 60 : 30, scheduleCheck)        
         } else {
         	log.trace "Dimming option not chosen. Scheduling scheduleCheck() to run after 'off' threshold reached."
         	runIn(minutes1 * 60, scheduleCheck)
@@ -287,9 +280,8 @@ def scheduleCheck() {
         if (elapsed >= getDimThreshold() && elapsed < getOffThreshold() && dimmers) {
         	log.trace "Motion has stayed inactive for amount of time between 'dim' and 'off' thresholds ($elapsed ms). Dimming lights"
             dimLights()
-            // Schedule to run again so can check for "off" threshold next:
-            runIn(minutes1 > 1 ? 60 : 30, scheduleCheck)            
-            //runIn(minutes1 > 1 ? (minutes1 - 1) * 60 : 45, scheduleCheck)
+            // Schedule to run again in 1 minute (30 s if "off" threshold <1m) so can check for "off" threshold next:
+            runIn(minutes1 > 1 ? 60 : 30, scheduleCheck)
             log.trace "Done dimming. Scheduled scheduleCheck() to run again in ${minutes1 > 1 ? 60 : 30} seconds."
         }
     	if (elapsed >= getOffThreshold()) {
@@ -316,11 +308,10 @@ def turnOnOrRestoreLights() {
     	log.trace "Outside specified run time or lux level. Returning."
 		log.debug "Exiting turnOnOrRestoreLights()."
         return
-    } else if (boolDontObserve) {
-    	log.trace "Outside specified run time or lux level, but configured not to observe. However, this does not apply to turning light on. Continuing..."
-		// This is NOT what we should do--it was in here originally but appears to be wrong, so just leave out:
-        //log.debug "Exiting turnOnOrRestoreLights()."
-    	//return
+    } else if ((!isRunTimeOK() || !isLuxLevelOK()) && boolDontObserve) {
+    	log.trace "Outside specified run time or lux level, but configured not to observe. However, this does not apply to turning light on. Exiting."
+		log.debug "Exiting turnOnOrRestoreLights()."
+    	return
     }
     if (state.mode != "dim" && isOneRealSwitchOn()) {
     	log.trace "Current mode is not 'dim' and at least on swtich is on. Assume this is desired state."
