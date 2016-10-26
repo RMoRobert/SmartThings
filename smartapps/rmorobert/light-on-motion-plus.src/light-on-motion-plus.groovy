@@ -31,18 +31,15 @@ preferences {
             input "motion1", "capability.motionSensor", title: "Which motion sensor?"
         }
         section("Turn on/off light(s)...") {
-            // Really want to use the 'dimmers' variable below for these, but can't seem to access their on/off
-            // capabilities (even though the devices support it) unless they are selected as switches, so...
-            // Make user select ideally the same lights for both 'switches' and 'dimmers'
             input "switches", "capability.switch", multiple: true
         }    
         section("And off when there's been no movement for...") {
             input "minutes1", "number", title: "Minutes?"
         }
         section("Dim before turning off...") {
-            // See comment for 'switches' variable. 
-            input "dimmers", "capability.switchLevel", multiple: true, title: "Lights to dim for 1 minute before turning off"
-            paragraph "Select the same lights here as you did above, unless you do not want one or more of them to dim before turning off. (Selecting lights not chosen above will have no effect.)"
+            //input "dimmers", "capability.switchLevel", multiple: true, title: "Lights to dim for 1 minute before turning off"
+            //paragraph "Select the same lights here as you did above, unless you do not want one or more of them to dim before turning off. (Selecting lights not chosen above will have no effect.)"
+            input "boolDim", "bool", defaultValue: true, required: true, title: "Dim for 1 minute before turning off"
        }     
        section("Only during certain times...") {
             //TODO: Would be nice to have sunset/sunrise as options here like stock app
@@ -59,14 +56,14 @@ preferences {
     page(name: "pageAdvanced", title: "Advanced options", nextPage: "pageFinal") {
 
         section("Always turn off lights after motion stops, even if specified time/illuminance conditios are not met?") {
-            input "boolDontObserve", "bool", defaultValue: false, title: "Turn lights off even if outside of time or illumance thresholds"
+            input "boolDontObserve", "bool", defaultValue: false, required: true, title: "Turn lights off even if outside of time or illumance thresholds"
         }
         section("Remember on/off state of individual lights when motion stops and restore when motion starts?"){
-            input "boolRemember", "bool", defaultValue: true, title: "Remember states?"
+            input "boolRemember", "bool", defaultValue: true, required: true, title: "Remember states?"
             paragraph "By default, this app remembers the on/off state of each light chosen previously and restores the on/off state of each light when motion resumes after inactivity, rather than turning all lights back on (unless all were off, then all are turned back on)."
         }
         section("Disable app? (Use this to temporarily prevent this app from effecting changes on the lights without needing to actually uninstall the app.)") {
-        	input "boolDisable", "bool", defaultValue: false, title: "Disable app"
+        	input "boolDisable", "bool", defaultValue: false, required: true, title: "Disable app"
         }
     }
     
@@ -182,30 +179,78 @@ def isLuxLevelOK() {
 }
 
 /**
- * Returns "Switch Level" (dimmer) matching "Switch", assuming user has selected both
+ * Returns current "level" attribute for device if supports "level", otherwise returns 100 if switch on or 0 if off
+ 
  */
-def getDimmerForSwitch(sw) {
-	log.trace "Running getDimmerForSwitch()... sw = ${sw}"
-	for (dm in dimmers) {
-    	if (dm.id == sw.id) {
-            log.debug "Exiting from getDimmerForSwitch(). Found dimmer, returning ${dm}."
-        	return dm
-		}
-	}
-    log.warn "No dimmer matching switch ${sw} was found. Exiting getDimmerForSwitch()."
+def getDimmerLevel(sw) {
+	log.debug "Running getDimmerLevel for ${sw}..."
+	def retVal
+    def supportedAttributes
+    retVal = -1
+    supportedAttributes = sw.getSupportedAttributes()
+    supportedAttributes.each {
+    	if (it.getName() == "level") {
+    		log.trace "Device ${sw} supports 'level'"
+    		retVal = sw.currentLevel
+        }
+    }
+    if (retVal == -1) {
+        supportedAttributes.each {
+            if (it.getName() == "switch") {
+            	log.trace "Device ${sw} supports 'switch' but not 'level'"
+           		if (sw.currentSwitch == "on") {
+                	retVal = 100
+            	} else {
+                	retVal = 0
+            	}
+        	}
+    	}
+    }
+    if (retVal == -1 ) {
+    	log.warn "Device ${sw} does not support 'level' or 'switch' capabilties."        
+    	retVal = 0
+    }
+    log.debug "Exiting getDimmerLevel for ${sw}. Returning ${retVal}."
+    return retVal
 }
 
 /**
- * Returns "Switch" matching "Switch Level" (dimmer), assuming user has selected both
+ * Sets "level" attribute on device if supports Switch Level capabilities. Otherwise sets "switch" attribute to "on" if lvl > 100 or "off" if = 0.
+ * Returns "true" if appears to have succeeded.
  */
-def getSwitchForDimmer(dm) {
-	for (sw in switches) {
-    	if (sw.id == dm.id) {
-            log.trace "Exiting getSwitchForDimmer(). Found switch, returning ${sw}."
-        	return sw
-		}
-	}
-    log.warn "No match for dimmer ${dm} found. Exiting getSwitchForDimmer()."
+def setDimmerLevel(sw, lvl) {
+	log.debug "Running setDimmerLevel for '${sw}' with '${lvl}'..."
+	def retVal
+    def supportedAttributes
+    retVal = -1
+    supportedAttributes = sw.getSupportedAttributes()
+    supportedAttributes.each {
+    	if (it.getName() == "level") {
+    	log.trace "Device ${sw} supports 'level'"
+    	sw.setLevel(lvl)
+        retVal = true
+        }
+    }
+    if (retVal == -1) {
+        supportedAttributes.each {
+            if (it.getName() == "switch") {
+            	log.trace "Device ${sw} supports 'switch' but not 'level'"
+          		log.trace "Device ${sw} supports 'switch' but not 'level'"
+          		if (lvl > 0) {
+					sw.on()
+            	} else {
+					sw.off()
+            	}   
+            		// Ambiguous case, not sure if should do or not:
+            		//retVal = true
+        	}
+    	}
+    }
+    if (retVal == -1 ) {
+    	log.warn "Device ${sw} does not support 'level' or 'switch' capabilties."        
+    }
+    log.debug "Exiting setDimmerLevel for ${sw}. Returning ${retVal}."
+    return retVal
 }
 
 /**
@@ -216,11 +261,12 @@ def getSwitchForDimmer(dm) {
 def saveLightState(forSwitch) {
 	log.debug "Running saveLightState()..."
 	if (forSwitch.currentSwitch == "on") {
-        def dm = getDimmerForSwitch(forSwitch)
-        if (dm) {
-            state.switchStates.put(forSwitch.id, ["switch": "on", "level": dm.currentLevel])
+        def dimmerLevel = getDimmerLevel(forSwitch)
+        if (dimmerLevel) {
+            state.switchStates.put(forSwitch.id, ["switch": "on", "level": dimmerLevel])
         } else {
-            state.switchStates.put(forSwitch.id, ["switch": "on", "level": 100])   // Guess just store 100 for brightness if can't tell...
+            state.switchStates.put(forSwitch.id, ["switch": "on", "level": 100])   // Guess just store 100 for brightness if can't tell and getDimmerLevel also failed
+            log.warn "Couldn't find 'level' capability for ${forSwitch}, using 100 instead"
             // Can't dim bulb, so I guess don't do anything here
         }
     } else {
@@ -279,7 +325,7 @@ def motionHandler(evt) {
 		turnOnOrRestoreLights()
 	} else if (evt.value == "inactive") {
     	log.trace "Motion inactive. Deciding what to do..."
-        if (dimmers) {
+        if (boolDim) {
         	log.trace "Dimming option has been chosen. Scheduling scheduleCheck() to run after 'dimming' threshold reached."
             // Run 1 minute before "off" threshold, unless offThreshold > 1 minute, then aim for 30s
             runIn(minutes1 > 1 ? (minutes1 - 1) * 60 : 30, scheduleCheck)        
@@ -297,7 +343,7 @@ def scheduleCheck() {
 	def motionState = motion1.currentState("motion")
     if (motionState.value == "inactive") {
         def elapsed = now() - motionState.rawDateCreated.time
-        if (elapsed >= getDimThreshold() && elapsed < getOffThreshold() && dimmers) {
+        if (elapsed >= getDimThreshold() && elapsed < getOffThreshold() && boolDim) {
         	log.trace "Motion has stayed inactive for amount of time between 'dim' and 'off' thresholds ($elapsed ms). Dimming lights"
             dimLights()
             // Schedule to run again in 1 minute (30 s if "off" threshold <1m) so can check for "off" threshold next:
@@ -348,17 +394,10 @@ def turnOnOrRestoreLights() {
             switches.each {
                 def savedLightState = getSavedLightOnOffState(it)
                 if (savedLightState != "off") {
-                    log.trace "${it} was saved as on. Turning on."
-                    it.on()
-                    def dm = getDimmerForSwitch(it)
-                    if (dm) {
-                        def prevLevel = getSavedDimLevelState(it)
-                        log.trace "Dimmer found for ${it}. Previous level: ${prevLevel}. Setting."
-                        dm.setLevel(prevLevel)
-                    } else {
-                        log.trace "No dimmer found for ${it}. Turning on switch but cannot restore dim level."
-                        it.on()
-                    }
+                    log.trace "${it} was saved as on. Turning on and resotring previous dimmer level."
+                    it.on()                    
+                    def prevLevel = getSavedDimLevelState(it)
+                    setDimmerLevel(it, prevLevel)
                 } else {
                     log.trace "${it} was saved as off. Not turning on."
                 }
@@ -392,24 +431,17 @@ def dimLights() {
     	log.trace "Saving light state for ${sw}"
     	saveLightState(sw)
     	log.trace "Dimming ${sw}"
-        def dm = getDimmerForSwitch(sw)
-        if (dm) {
-            log.trace "Found ${dm}, currently at level ${dm.currentLevel}"
-            if (sw.currentSwitch != "off") {
-            	def toLevel = dimToLevel
-                if (dm.currentLevel <= toLevel) {
-                	// If light is currently at or less than "dim to" level, dim it as low as possible
-                	toLevel = 1
-                } 
-            	dm.setLevel(toLevel)
-                log.trace "Dimmed ${dm} to ${toLevel}"
-            } else {
-            	log.trace "Not dimming ${sw} because is off."
-            }
-            log.trace "${dm} now at level ${dm.currentLevel}"
+        if (sw.currentSwitch != "off") {
+            def toLevel = dimToLevel
+            if (getDimmerLevel(sw) <= toLevel) {
+                // If light is currently at or less than "dim to" level, dim it as low as possible
+                toLevel = 1
+            } 
+            setDimmerLevel(sw, toLevel)
+            log.trace "Dimmed ${sw} to ${toLevel}"
         } else {
-        	log.trace "No dimmer found for ${sw}"
-        }
+            log.trace "Not dimming ${sw} because is off."
+        } 
     }
     state.mode = "dim"
     log.info "state.mode = ${state.mode}"
