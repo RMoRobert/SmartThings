@@ -65,6 +65,9 @@ preferences {
             input "boolRemember", "bool", defaultValue: true, title: "Remember states?"
             paragraph "By default, this app remembers the on/off state of each light chosen previously and restores the on/off state of each light when motion resumes after inactivity, rather than turning all lights back on (unless all were off, then all are turned back on)."
         }
+        section("Disable app? (Use this to temporarily prevent this app from effecting changes on the lights without needing to actually uninstall the app.)") {
+        	input "boolDisable", "bool", defaultValue: false, title: "Disable app"
+        }
     }
     
     page(name: "pageFinal", title: "Name app and configure modes", install: true, uninstall: true) {
@@ -263,6 +266,9 @@ def getSavedDimLevelState(forSwitch) {
 
 def motionHandler(evt) {
 	log.debug "----------------Begin handling of ${evt.name}: ${evt.value}----------------"
+    if (boolDisable) {
+    	lob.debug "---------------- App configured to be to disabled. Exiting motion handler. ----------------"
+    }
     log.info "state.mode = ${state.mode}"
     if ((!isRunTimeOK() || !isLuxLevelOK()) && !boolDontObserve) {
     	log.debug "Outside specified run time or lux level. Returning."
