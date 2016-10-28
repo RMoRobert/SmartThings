@@ -36,10 +36,8 @@ preferences {
         section("And off when there's been no movement for...") {
             input "minutes1", "number", title: "Minutes?"
         }
-        section("Dim before turning off...") {
-            //input "dimmers", "capability.switchLevel", multiple: true, title: "Lights to dim for 1 minute before turning off"
-            //paragraph "Select the same lights here as you did above, unless you do not want one or more of them to dim before turning off. (Selecting lights not chosen above will have no effect.)"
-            input "boolDim", "bool", defaultValue: true, required: true, title: "Dim for 1 minute before turning off"
+        section("Dim 1 minute before turning off...") {
+        	input "boolDim", "bool", defaultValue: true, required: true, title: "Dim before turning off"
        }     
        section("Only during certain times...") {
             //TODO: Would be nice to have sunset/sunrise as options here like stock app
@@ -55,10 +53,10 @@ preferences {
     }
     page(name: "pageAdvanced", title: "Advanced options", nextPage: "pageFinal") {
 
-        section("Always turn off lights after motion stops, even if specified time/illuminance conditios are not met?") {
-            input "boolDontObserve", "bool", defaultValue: false, required: true, title: "Turn lights off even if outside of time or illumance thresholds"
+        section("Always turn off lights after motion stops, even if outside of specifed time, illuminance, or mode conditions?") {
+            input "boolDontObserve", "bool", defaultValue: false, required: true, title: "Always turn off after motion stops"
         }
-        section("Remember on/off state of individual lights when motion stops and restore when motion starts?"){
+        section("If multiple lights are selected, remember on/off state of individual lights when motion stops and restore when motion starts?"){
             input "boolRemember", "bool", defaultValue: true, required: true, title: "Remember states?"
             paragraph "By default, this app remembers the on/off state of each light chosen previously and restores the on/off state of each light when motion resumes after inactivity, rather than turning all lights back on (unless all were off, then all are turned back on)."
         }
@@ -70,7 +68,7 @@ preferences {
     page(name: "pageFinal", title: "Name app and configure modes", install: true, uninstall: true) {
         section([mobileOnly:true]) {
             label title: "Assign a name", required: false
-            mode title: "Set for specific mode(s)", required: false
+            input "modes", "mode", title: "Only when mode is", multiple: true, required: false
         }
     }
 }
@@ -112,37 +110,11 @@ def updated() {
     log.trace "****** App updated *****"
 }
 
-// Returns true if at least one switch is turned on at the moment
-def isOneRealSwitchOn() {
-    log.debug "Running isOneRealSwitchOn()..."
-    def isOneOn = false
-    switches.each {
-    	log.trace "Checking switch ${it}..."
-    	if (it.currentSwitch == "on") {
-        	log.trace "Switch ${it} is on."
-        	isOneOn = true
-        } else {
-        	log.trace "Switch ${it} is off."
-        }
-    }
-    log.debug "Ran isOneRealSwitchOn(). Return value = " + isOneOn
-    return isOneOn
-}
-
-// Returns true if at least switch in saved switches is turned on
-def isOneSavedSwitchOn() {
-	log.debug "Running isOneSavedSwitchOn()..."
-    def isOneOn = false
-    state.switchStates.each { key, value ->
-        if (value["switch"] == "on") {
-            log.trace "Saved switch ${key} is on."
-            isOneOn = true
-        } else {
-        	log.trace "Saved switch ${key} is off."
-        }
-    }
-    log.debug "Ran isOneSavedSwitchOn(). Return value = " + isOneOn
-    return isOneOn
+def isModeOK() {	
+	log.debug "Running isModeOK()..."
+	def retVal = !modes || modes.contains(location.mode)	
+	log.debug "Exiting isModeOK(). Return value = ${retVal}"
+	return retVal
 }
 
 // Returns false if user has specified "run between" times and the current time
@@ -176,6 +148,39 @@ def isLuxLevelOK() {
     }
     log.debug "Exiting isLuxLevelOK(). Return value = ${retVal}"
     return retVal
+}
+
+// Returns true if at least one switch is turned on at the moment
+def isOneRealSwitchOn() {
+    log.debug "Running isOneRealSwitchOn()..."
+    def isOneOn = false
+    switches.each {
+    	log.trace "Checking switch ${it}..."
+    	if (it.currentSwitch == "on") {
+        	log.trace "Switch ${it} is on."
+        	isOneOn = true
+        } else {
+        	log.trace "Switch ${it} is off."
+        }
+    }
+    log.debug "Ran isOneRealSwitchOn(). Return value = " + isOneOn
+    return isOneOn
+}
+
+// Returns true if at least switch in saved switches is turned on
+def isOneSavedSwitchOn() {
+	log.debug "Running isOneSavedSwitchOn()..."
+    def isOneOn = false
+    state.switchStates.each { key, value ->
+        if (value["switch"] == "on") {
+            log.trace "Saved switch ${key} is on."
+            isOneOn = true
+        } else {
+        	log.trace "Saved switch ${key} is off."
+        }
+    }
+    log.debug "Ran isOneSavedSwitchOn(). Return value = " + isOneOn
+    return isOneOn
 }
 
 /**
@@ -316,8 +321,8 @@ def motionHandler(evt) {
     	lob.debug "---------------- App configured to be to disabled. Exiting motion handler. ----------------"
     }
     log.info "state.mode = ${state.mode}"
-    if ((!isRunTimeOK() || !isLuxLevelOK()) && !boolDontObserve) {
-    	log.debug "Outside specified run time or lux level. Returning."
+    if ((!isRunTimeOK() || !isLuxLevelOK() || !isModeOK()) && !boolDontObserve) {
+    	log.debug "Outside specified run time, lux level, or mode. Returning."
         return
     }	
 	if (evt.value == "active") {
@@ -370,24 +375,25 @@ def scheduleCheck() {
 def turnOnOrRestoreLights() {
     log.debug "Running turnOnOrRestoreLights()..."
     log.trace "state.mode = ${state.mode}"
-    if ((!isRunTimeOK() || !isLuxLevelOK()) && !boolDontObserve)   {
-    	log.trace "Outside specified run time or lux level. Returning."
+    if ((!isRunTimeOK() || !isLuxLevelOK() || !isModeOK()) && !boolDontObserve)   {
+    	log.trace "Outside specified run time, lux level, or mode. Returning."
 		log.debug "Exiting turnOnOrRestoreLights()."
         return
-    } else if ((!isRunTimeOK() || !isLuxLevelOK()) && boolDontObserve) {
-    	log.trace "Outside specified run time or lux level, but configured not to observe. However, this does not apply to turning light on. Exiting."
+    } else if ((!isRunTimeOK() || !isLuxLevelOK() || !isModeOK()) && boolDontObserve) {
+    	log.trace "Outside specified run time, lux level, or mode, but configured not to observe. However, this does not apply to turning light on. Exiting."
 		log.debug "Exiting turnOnOrRestoreLights()."
     	return
     }
+    
     if (state.mode != "dim" && isOneRealSwitchOn()) {
     	log.trace "Current mode is not 'dim' and at least on swtich is on. Assume this is desired state."
         log.trace "Setting mode to 'on' in case it isn't."
         state.mode = "on"
     }
-    else if (state.mode == "dim" || state.mode == "off") {
-    	if (!isOneSavedSwitchOn) {
+    else if (state.mode == "dim" || state.mode == "off" || (state.mode == "on" && !isOneRealSwitchOn())) {
+    	if (!isOneSavedSwitchOn()) {
         	log.trace "No switches were saved as 'on' when motion last stopped. Turning all on."
-            switches.on
+            switches.on()
             state.mode = "on"
         } else { 
         	log.trace "Mode is either 'dim' or 'off' and at leat one switch was saved as on, so restore lights to last known state."
@@ -404,7 +410,7 @@ def turnOnOrRestoreLights() {
             }
         }
     }
-    if (state.mode == "unknown") {
+    else if (state.mode == "unknown") {
     	log.trace "State unknown. Turning on all switches."
         switches.on()
     }
@@ -420,11 +426,11 @@ def turnOnOrRestoreLights() {
 def dimLights() {
 	log.debug "Running dimLights()..."
     log.info "state.mode = ${state.mode}"
-    if ((!isRunTimeOK() || !isLuxLevelOK()) && !boolDontObserve)  {
-    	log.debug "Outside specified run time or lux level. Returning."
+    if ((!isRunTimeOK() || !isLuxLevelOK() || !isModeOK()) && !boolDontObserve)  {
+    	log.debug "Outside specified run time, lux level, or mode. Returning."
         return
     } else if (boolDontObserve) {
-    	log.debug "Outside specified run time or lux level, but configured not to observe. Continuing..."
+    	log.debug "Outside specified run time, lux level, or mode, but configured not to observe. Continuing..."
     }
     state.switchStates = [:]
     for (sw in switches) {    
@@ -455,11 +461,11 @@ def dimLights() {
 def turnOffLights() {
 	log.debug "Running turnOffLights()..."
     log.info "state.mode = ${state.mode}"
-    if ((!isRunTimeOK() || !isLuxLevelOK()) && !boolDontObserve)  {
-    	log.debug "Outside specified run time or lux level. Returning."
+    if ((!isRunTimeOK() || !isLuxLevelOK() || !isModeOK()) && !boolDontObserve)  {
+    	log.debug "Outside specified run time, lux level, or mode. Returning."
         return
     } else if (boolDontObserve) {
-    	log.debug "Outside specified run time or lux level, but configured not to observe. Continuing..."
+    	log.debug "Outside specified run time, lux level, or mode, but configured not to observe. Continuing..."
     }
     switches.each {
     	log.trace "Saving on/off state then turning off: ${it}"
