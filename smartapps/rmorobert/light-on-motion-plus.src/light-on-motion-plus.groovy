@@ -277,7 +277,7 @@ def saveLightState(forSwitch) {
     } else {
             state.switchStates.put(forSwitch.id, ["switch": "off"])
     }
-    log.trace "Just saved for " + forSwitch.id + ": " + state.switchStates.get(forSwitch.id)
+    log.trace "Just saved for ${forSwitch}: " + state.switchStates.get(forSwitch.id)
     log.debug "Exiting saveLightState()."    
 }
 
@@ -289,7 +289,7 @@ def saveLightOnOffState(forSwitch) {
 	log.debug "Running saveLightOnOffState()..."
     //log.trace "Switch ${forSwitch.id} currently saved as ${state.switchStates.(forSwitch.id)}"
     state.switchStates.(forSwitch.id).switch = forSwitch.currentSwitch
-    log.trace "Just saved for " + forSwitch.id + ": " + state.switchStates.get(forSwitch.id)
+    log.trace "Just saved for ${forSwitch}: " + state.switchStates.get(forSwitch.id)
     log.debug "Exiting saveLightOnOffState()."    
 }
 
