@@ -434,8 +434,8 @@ def turnOnOrRestoreLights() {
     	if (!isOneSavedSwitchOn() || !boolRemember) {
         	log.trace "No switches were saved as 'on' when motion last stopped or app configured to not remember individual light on/off states. Turning all on and restoring to saved dim level."
             switches.each {
+                setDimmerLevel(it, getSavedDimLevelState(it))                
             	it.on()
-                setDimmerLevel(it, getSavedDimLevelState(it))
             }
             switches.on()
             state.mode = "on"
@@ -444,10 +444,10 @@ def turnOnOrRestoreLights() {
             switches.each {
                 def savedLightState = getSavedLightOnOffState(it)
                 if (savedLightState != "off") {
-                    log.trace "${it} was saved as on. Turning on and resotring previous dimmer level."
-                    it.on()                    
+                    log.trace "${it} was saved as on. Turning on and resotring previous dimmer level."         
                     def prevLevel = getSavedDimLevelState(it)
-                    setDimmerLevel(it, prevLevel)
+                    setDimmerLevel(it, prevLevel)                    
+                    it.on()           
                 } else {
                     log.trace "${it} was saved as off. Not turning on."
                 }
